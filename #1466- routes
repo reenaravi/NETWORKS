@@ -1,0 +1,55 @@
+1466. Reorder Routes to Make All Paths Lead to the City Zero
+#include <stdlib.h>
+
+typedef struct {
+    int to;
+    int cost;
+} Edge;
+
+int dfs(Edge **graph, int **size, int node, int parent) {
+    int count = 0;
+
+    for (int i = 0; i < (*size)[node]; i++) {
+        Edge edge = graph[node][i];
+
+        if (edge.to == parent)
+            continue;
+
+        count += edge.cost;
+        count += dfs(graph, size, edge.to, node);
+    }
+
+    return count;
+}
+
+int minReorder(int n, int** connections, int connectionsSize,
+               int* connectionsColSize) {
+
+    Edge **graph = malloc(n * sizeof(Edge *));
+    int *size = calloc(n, sizeof(int));
+
+    
+    for (int i = 0; i < n; i++) {
+        graph[i] = malloc(n * sizeof(Edge));
+    }
+
+    for (int i = 0; i < connectionsSize; i++) {
+        int a = connections[i][0];
+        int b = connections[i][1];
+
+        graph[a][size[a]++] = (Edge){b, 1};
+
+      
+        graph[b][size[b]++] = (Edge){a, 0};
+    }
+
+    int answer = dfs(graph, &size, 0, -1);
+
+    for (int i = 0; i < n; i++)
+        free(graph[i]);
+
+    free(graph);
+    free(size);
+
+    return answer;
+}
