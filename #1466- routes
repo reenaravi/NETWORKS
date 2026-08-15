@@ -4,52 +4,70 @@
 typedef struct {
     int to;
     int cost;
+    int next;
 } Edge;
-
-int dfs(Edge **graph, int **size, int node, int parent) {
-    int count = 0;
-
-    for (int i = 0; i < (*size)[node]; i++) {
-        Edge edge = graph[node][i];
-
-        if (edge.to == parent)
-            continue;
-
-        count += edge.cost;
-        count += dfs(graph, size, edge.to, node);
-    }
-
-    return count;
-}
 
 int minReorder(int n, int** connections, int connectionsSize,
                int* connectionsColSize) {
 
-    Edge **graph = malloc(n * sizeof(Edge *));
-    int *size = calloc(n, sizeof(int));
+    Edge* edges = malloc(2 * (n - 1) * sizeof(Edge));
+    int* head = malloc(n * sizeof(int));
+    int* visited = calloc(n, sizeof(int));
 
-    
-    for (int i = 0; i < n; i++) {
-        graph[i] = malloc(n * sizeof(Edge));
-    }
+    for (int i = 0; i < n; i++)
+        head[i] = -1;
+
+    int edgeCount = 0;
 
     for (int i = 0; i < connectionsSize; i++) {
         int a = connections[i][0];
         int b = connections[i][1];
 
-        graph[a][size[a]++] = (Edge){b, 1};
+        // Original direction: a -> b
+        // Cost 1 because it points away from city 0
+        edges[edgeCount].to = b;
+        edges[edgeCount].cost = 1;
+        edges[edgeCount].next = head[a];
+        head[a] = edgeCount++;
 
-      
-        graph[b][size[b]++] = (Edge){a, 0};
+        // Reverse traversal: b -> a
+        // Cost 0 because it points toward city 0
+        edges[edgeCount].to = a;
+        edges[edgeCount].cost = 0;
+        edges[edgeCount].next = head[b];
+        head[b] = edgeCount++;
     }
 
-    int answer = dfs(graph, &size, 0, -1);
+    // Iterative DFS to avoid recursion stack problems
+    int* stack = malloc(n * sizeof(int));
+    int top = 0;
 
-    for (int i = 0; i < n; i++)
-        free(graph[i]);
+    stack[top++] = 0;
+    visited[0] = 1;
 
-    free(graph);
-    free(size);
+    int answer = 0;
+
+    while (top > 0) {
+        int node = stack[--top];
+
+        for (int e = head[node]; e != -1; e = edges[e].next) {
+            int next = edges[e].to;
+
+            if (visited[next])
+                continue;
+
+            visited[next] = 1;
+
+            answer += edges[e].cost;
+
+            stack[top++] = next;
+        }
+    }
+
+    free(edges);
+    free(head);
+    free(visited);
+    free(stack);
 
     return answer;
 }
