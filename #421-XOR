@@ -1,0 +1,48 @@
+#421  Given an integer array nums, return the maximum result of nums[i] XOR nums[j], where 0 <= i <= j < n.
+
+#include <stdlib.h>
+typedef struct Node {
+    struct Node *child[2];
+} Node;
+Node* createNode() {
+    Node *node = (Node *)malloc(sizeof(Node));
+    node->child[0] = NULL;
+    node->child[1] = NULL;
+    return node;
+}int findMaximumXOR(int* nums, int numsSize) {
+
+    Node *root = createNode();
+
+    for (int i = 0; i < numsSize; i++) {
+        Node *curr = root;
+
+        for (int bit = 31; bit >= 0; bit--) {
+            int value = (nums[i] >> bit) & 1;
+
+            if (curr->child[value] == NULL)
+                curr->child[value] = createNode();
+
+            curr = curr->child[value];
+        }
+    }int answer = 0;
+      for (int i = 0; i < numsSize; i++) {
+      Node *curr = root;
+        int currentXor = 0;
+        for (int bit = 31; bit >= 0; bit--) {
+
+            int value = (nums[i] >> bit) & 1;
+
+            if (curr->child[1 - value] != NULL) {
+                currentXor |= (1 << bit);
+                curr = curr->child[1 - value];
+            } else {
+                curr = curr->child[value];
+            }
+        }
+
+        if (currentXor > answer)
+            answer = currentXor;
+    }
+
+    return answer;
+}
