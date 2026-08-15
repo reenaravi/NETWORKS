@@ -1,0 +1,206 @@
+#include <stdio.h>
+#include <stdbool.h>
+#include <string.h>
+
+#define MAX_VERTICES 10
+#define INF 9999
+
+struct Graph {
+    int num_vertices;
+    int adjacency_matrix[MAX_VERTICES][MAX_VERTICES];
+};
+void get_path_string(int parent[], int current, int source, char *path_str) {
+    if (current == source) {
+        sprintf(path_str + strlen(path_str), "%c", source + 'A');
+        return;
+    }
+    if (parent[current] == -1) {
+        sprintf(path_str + strlen(path_str), "%c -> %c", source + 'A', current + 'A');
+        return;
+    }
+    get_path_string(parent, parent[current], source, path_str);
+    sprintf(path_str + strlen(path_str), " -> %c", current + 'A');
+}
+
+char get_next_hop(int parent[], int current, int source) {
+    if (current == source) return (char)(source + 'A');
+    if (parent[current] == source || parent[current] == -1) return (char)(current + 'A');
+    return get_next_hop(parent, parent[current], source);
+}
+int get_min_distance(int cost[], bool visited[], int n) {
+    int minimum = INF;
+    int min_index = -1;
+    int v; 
+
+    for (v = 0; v < n; v++) {
+        if (!visited[v] && cost[v] < minimum) {
+            minimum = cost[v];
+            min_index = v;
+        }
+    }
+    return min_index;
+}
+void compute_dijkstra(struct Graph *g, int src) {
+    int n = g->num_vertices;
+    int cost[MAX_VERTICES];
+    bool visited[MAX_VERTICES];
+    int parent[MAX_VERTICES];
+    int p_list[MAX_VERTICES];
+    int p_count = 0;
+    
+
+    int i, v, count, u; 
+    for (i = 0; i < n; i++) {
+        cost[i] = INF;
+        visited[i] = false;
+        parent[i] = -1;
+    }
+
+    cost[src] = 0;
+
+    printf("\n####################################################\n");
+    printf("SOURCE ROUTER = %c\n", src + 'A');
+    printf("####################################################\n\n");
+
+    printf("====================================================\n");
+    printf("DIJKSTRA FROM SOURCE = %c\n", src + 'A');
+    printf("====================================================\n\n");
+
+    printf("Initial condition:\n");
+    printf("Source = %c\n", src + 'A');
+    printf("All vertices initialized in Graph Matrix.\n");
+    printf("Source has distance 0.\n");
+    printf("All other vertices have distance INF.\n\n");
+
+    for (count = 0; count < n; count++) {
+        u = get_min_distance(cost, visited, n);
+
+        if (u == -1) {
+            for (i = 0; i < n; i++) {
+                if (!visited[i]) { u = i; break; }
+            }
+        }
+
+        if (u == -1) break;
+
+        visited[u] = true;
+        p_list[p_count++] = u;
+
+        printf("----------------------------------------------------\n");
+        printf("Vertex extracted = %c\n", u + 'A');
+        if (cost[u] == INF) printf("Minimum cost = INF\n");
+        else printf("Minimum cost = %d\n", cost[u]);
+        printf("Therefore add %c to Permanent Set (P)\n", u + 'A');
+        printf("----------------------------------------------------\n\n");
+
+        printf("P = { ");
+        for (i = 0; i < p_count; i++) {
+            printf("%c%s", p_list[i] + 'A', (i == p_count - 1) ? "" : ", ");
+        }
+        printf(" }\n\n");
+
+        printf("Checking paths through %c...\n", u + 'A');
+        if (cost[u] != INF) {
+            for (v = 0; v < n; v++) {
+                if (!visited[v] && g->adjacency_matrix[u][v] != INF) {
+                    if (cost[u] + g->adjacency_matrix[u][v] < cost[v]) {
+                        cost[v] = cost[u] + g->adjacency_matrix[u][v];
+                        parent[v] = u;
+                        printf("  Updated %c : cost = %d (through %c)\n", v + 'A', cost[v], u + 'A');
+                    }
+                }
+            }
+        }
+        printf("\n");
+        printf("------------------------------------\n");
+        printf("Router\tCost\tParent\n");
+        printf("------------------------------------\n");
+        for (i = 0; i < n; i++) {
+            char p_char = (parent[i] == -1) ? '-' : (char)(parent[i] + 'A');
+            
+            if (cost[i] == INF) {
+                printf("%c\tINF\t%c\n", i + 'A', p_char);
+            } else {
+                printf("%c\t%d\t%c\n", i + 'A', cost[i], p_char);
+            }
+        }
+        printf("------------------------------------\n\n");
+    }
+
+    printf("====================================================\n");
+    printf("FINAL RESULT FROM SOURCE %c\n", src + 'A');
+    printf("====================================================\n\n");
+    
+    printf("Final P set:\n\nP = { ");
+    for (i = 0; i < p_count; i++) {
+        printf("%c%s", p_list[i] + 'A', (i == p_count - 1) ? "" : ", ");
+    }
+    printf(" }\n\n");
+
+    printf("Final shortest distances:\n");
+    printf("----------------------------------------------------\n");
+    printf("Destination\tCost\tParent\n");
+    printf("----------------------------------------------------\n");
+    for (i = 0; i < n; i++) {
+        char p_char = (parent[i] == -1) ? '-' : (char)(parent[i] + 'A');
+        if (cost[i] == INF) {
+            printf("%c\t\tINF\t%c\n", i + 'A', p_char);
+        } else {
+            printf("%c\t\t%d\t%c\n", i + 'A', cost[i], p_char);
+        }
+    }
+    printf("----------------------------------------------------\n\n");
+
+    printf("===============================================================\n");
+    printf("ROUTING TABLE OF %c\n", src + 'A');
+    printf("===============================================================\n");
+    printf("Source\tDestination\tNextHop\tCost\tPath\n");
+    printf("---------------------------------------------------------------\n");
+    for (i = 0; i < n; i++) {
+        char path_str[100] = "";
+        char next_hop = get_next_hop(parent, i, src);
+        get_path_string(parent, i, src, path_str);
+        
+        if (cost[i] == INF) {
+            printf("%c\t%c\t\t-\tINF\tNot Reachable\n", src + 'A', i + 'A');
+        } else {
+            printf("%c\t%c\t\t%c\t%d\t%s\n", src + 'A', i + 'A', next_hop, cost[i], path_str);
+        }
+    }
+    printf("===============================================================\n\n");
+}
+
+int main() {
+    struct Graph my_network;
+    int i, j, s; 
+
+    printf("Enter number of Vertices: ");
+    if (scanf("%d", &my_network.num_vertices) != 1) return 0;
+
+    if (my_network.num_vertices > MAX_VERTICES || my_network.num_vertices <= 0) {
+        printf("Invalid number of vertices.\n");
+        return 0;
+    }
+
+    printf("\nEnter the %dx%d Adjacency Matrix (use 0 if there is no edge):\n", 
+           my_network.num_vertices, my_network.num_vertices);
+
+    for (i = 0; i < my_network.num_vertices; i++) {
+        for (j = 0; j < my_network.num_vertices; j++) {
+            int val;
+            scanf("%d", &val);
+            if (i != j && val == 0) {
+                my_network.adjacency_matrix[i][j] = INF;
+            } else {
+                my_network.adjacency_matrix[i][j] = val;
+            }
+        }
+    }
+
+    for (s = 0; s < my_network.num_vertices; s++) {
+        compute_dijkstra(&my_network, s);
+    }
+
+    return 0;
+}
+
