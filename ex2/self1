@@ -1,0 +1,136 @@
+1. Develop a program to implement the Cyclic Redundancy Check (CRC) algorithm for error detection. 
+The program should accept the sender's binary data and generator polynomial, generate the CRC codeword, 
+simulate the transmission by introducing single-bit and multiple-bit errors, and verify whether the receiver successfully detects the errors.
+Display the transmitted codeword, received codeword, remainder, and the final error detection status.
+
+
+#include <stdio.h>
+#include <string.h>
+
+void xorOperation(char *a, char *b, int start, int len)
+{
+    for (int i = 0; i < len; i++)
+        a[start + i] = (a[start + i] == b[i]) ? '0' : '1';
+}
+
+void calculateCRC(char *data, char *generator, char *remainder)
+{
+    int dataLen = strlen(data);
+    int genLen = strlen(generator);
+
+    char temp[200];
+
+    strcpy(temp, data);
+
+    for (int i = 0; i <= dataLen - genLen; i++)
+    {
+        if (temp[i] == '1')
+            xorOperation(temp, generator, i, genLen);
+    }
+
+    strcpy(remainder, temp + dataLen - genLen + 1);
+}
+
+int main()
+{
+    char data[100];
+    char generator[100];
+    char appended[200];
+    char remainder[100];
+    char codeword[200];
+    char received[200];
+
+    int dataLen, genLen;
+    int choice, pos;
+
+    printf("Enter sender data: ");
+    scanf("%s", data);
+
+    printf("Enter generator polynomial: ");
+    scanf("%s", generator);
+
+    dataLen = strlen(data);
+    genLen = strlen(generator);
+
+    /* Append zeros */
+    strcpy(appended, data);
+
+    for (int i = 0; i < genLen - 1; i++)
+        appended[dataLen + i] = '0';
+
+    appended[dataLen + genLen - 1] = '\0';
+
+    calculateCRC(appended, generator, remainder);
+
+    strcpy(codeword, data);
+    strcat(codeword, remainder);
+
+    printf("\n--- Sender Side ---\n");
+    printf("Data       : %s\n", data);
+    printf("Generator  : %s\n", generator);
+    printf("CRC        : %s\n", remainder);
+    printf("Codeword   : %s\n", codeword);
+
+    strcpy(received, codeword);
+
+    printf("\n--- Error Simulation ---\n");
+    printf("1. No error\n");
+    printf("2. Single-bit error\n");
+    printf("3. Multiple-bit error\n");
+    printf("Enter choice: ");
+    scanf("%d", &choice);
+
+    if (choice == 2)
+    {
+        printf("Enter bit position to flip (0 to %d): ", 
+               (int)strlen(received) - 1);
+        scanf("%d", &pos);
+
+        if (pos >= 0 && pos < strlen(received))
+        {
+            received[pos] =
+                (received[pos] == '0') ? '1' : '0';
+        }
+    }
+    else if (choice == 3)
+    {
+        int pos1, pos2;
+
+        printf("Enter two bit positions to flip: ");
+        scanf("%d %d", &pos1, &pos2);
+
+        if (pos1 >= 0 && pos1 < strlen(received))
+            received[pos1] =
+                (received[pos1] == '0') ? '1' : '0';
+
+        if (pos2 >= 0 && pos2 < strlen(received))
+            received[pos2] =
+                (received[pos2] == '0') ? '1' : '0';
+    }
+
+    calculateCRC(received, generator, remainder);
+
+    printf("\n--- Receiver Side ---\n");
+    printf("Transmitted Codeword : %s\n", codeword);
+    printf("Received Codeword    : %s\n", received);
+    printf("Remainder             : %s\n", remainder);
+
+    /* Check remainder */
+    int error = 0;
+
+    for (int i = 0; i < strlen(remainder); i++)
+    {
+        if (remainder[i] == '1')
+        {
+            error = 1;
+            break;
+        }
+    }
+
+    if (error)
+        printf("Final Status          : ERROR DETECTED\n");
+    else
+        printf("Final Status          : NO ERROR\n");
+
+    return 0;
+}
