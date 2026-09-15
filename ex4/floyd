@@ -1,0 +1,68 @@
+#include <stdio.h>
+
+#define INF 999999
+
+int main()
+{
+    int n, m;
+    int dist[401][401];
+    int i, j, k;
+    int u, v, w;
+    int q, start, end;
+
+    scanf("%d %d", &n, &m);
+
+    /* Initialize distance matrix */
+    for (i = 1; i <= n; i++)
+    {
+        for (j = 1; j <= n; j++)
+        {
+            if (i == j)
+                dist[i][j] = 0;
+            else
+                dist[i][j] = INF;
+        }
+    }
+
+    /* Read edges */
+    for (i = 0; i < m; i++)
+    {
+        scanf("%d %d %d", &u, &v, &w);
+
+        /* Last edge is considered */
+        dist[u][v] = w;
+    }
+
+    /* Floyd-Warshall */
+    for (k = 1; k <= n; k++)
+    {
+        for (i = 1; i <= n; i++)
+        {
+            for (j = 1; j <= n; j++)
+            {
+                if (dist[i][k] != INF && dist[k][j] != INF)
+                {
+                    if (dist[i][k] + dist[k][j] < dist[i][j])
+                    {
+                        dist[i][j] = dist[i][k] + dist[k][j];
+                    }
+                }
+            }
+        }
+    }
+
+    /* Read queries */
+    scanf("%d", &q);
+
+    for (i = 0; i < q; i++)
+    {
+        scanf("%d %d", &start, &end);
+
+        if (dist[start][end] == INF)
+            printf("-1\n");
+        else
+            printf("%d\n", dist[start][end]);
+    }
+
+    return 0;
+}
