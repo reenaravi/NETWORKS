@@ -1,0 +1,81 @@
+#include <stdlib.h>
+#include <limits.h>
+
+int minimumEffortPath(int** heights, int heightsSize, int* heightsColSize)
+{
+    int rows = heightsSize;
+    int cols = heightsColSize[0];
+
+    int total = rows * cols;
+
+    int *distance = (int*)malloc(total * sizeof(int));
+    int *visited = (int*)calloc(total, sizeof(int));
+
+    for (int i = 0; i < total; i++)
+        distance[i] = INT_MAX;
+
+    distance[0] = 0;
+
+    for (int count = 0; count < total; count++)
+    {
+        int current = -1;
+        int smallest = INT_MAX;
+
+        /* Find the cell with minimum effort */
+        for (int i = 0; i < total; i++)
+        {
+            if (!visited[i] && distance[i] < smallest)
+            {
+                smallest = distance[i];
+                current = i;
+            }
+        }
+
+        if (current == -1)
+            break;
+
+        if (current == total - 1)
+            break;
+
+        visited[current] = 1;
+
+        int row = current / cols;
+        int col = current % cols;
+
+        int dr[] = {-1, 1, 0, 0};
+        int dc[] = {0, 0, -1, 1};
+
+        for (int k = 0; k < 4; k++)
+        {
+            int newRow = row + dr[k];
+            int newCol = col + dc[k];
+
+            if (newRow < 0 || newRow >= rows ||
+                newCol < 0 || newCol >= cols)
+            {
+                continue;
+            }
+
+            int next = newRow * cols + newCol;
+
+            int difference = abs(
+                heights[row][col] - heights[newRow][newCol]
+            );
+
+            int newEffort = distance[current];
+
+            if (difference > newEffort)
+                newEffort = difference;
+
+            if (newEffort < distance[next])
+                distance[next] = newEffort;
+        }
+    }
+
+    int answer = distance[total - 1];
+
+    free(distance);
+    free(visited);
+
+    return answer;
+}
