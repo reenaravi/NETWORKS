@@ -1,0 +1,107 @@
+#include <stdlib.h>
+
+#define MAX_STOP 1000000
+#define MAX_ROUTE 100000
+
+struct Node
+{
+    int bus;
+    struct Node *next;
+};
+
+struct Node* createNode(int bus)
+{
+    struct Node *newNode;
+
+    newNode = (struct Node*)malloc(sizeof(struct Node));
+
+    newNode->bus = bus;
+    newNode->next = NULL;
+
+    return newNode;
+}
+
+int numBusesToDestination(int** routes, int routesSize,
+                          int* routesColSize, int source, int target)
+{
+    if (source == target)
+        return 0;
+
+    struct Node **stopList;
+    int *visitedBus;
+    int *visitedStop;
+    int *queue;
+
+    stopList = (struct Node**)calloc(MAX_STOP, sizeof(struct Node*));
+    visitedBus = (int*)calloc(routesSize, sizeof(int));
+    visitedStop = (int*)calloc(MAX_STOP, sizeof(int));
+
+    queue = (int*)malloc(MAX_STOP * sizeof(int));
+
+    /*
+        Create stop -> bus connection
+    */
+    for (int i = 0; i < routesSize; i++)
+    {
+        for (int j = 0; j < routesColSize[i]; j++)
+        {
+            int stop = routes[i][j];
+
+            struct Node *newNode = createNode(i);
+
+            newNode->next = stopList[stop];
+            stopList[stop] = newNode;
+        }
+    }
+
+    int front = 0;
+    int rear = 0;
+    int busCount = 0;
+
+    queue[rear++] = source;
+    visitedStop[source] = 1;
+
+    while (front < rear)
+    {
+        int size = rear - front;
+
+        busCount++;
+
+        for (int i = 0; i < size; i++)
+        {
+            int currentStop = queue[front++];
+
+            struct Node *temp = stopList[currentStop];
+
+            while (temp != NULL)
+            {
+                int bus = temp->bus;
+
+                if (!visitedBus[bus])
+                {
+                    visitedBus[bus] = 1;
+
+                    for (int j = 0; j < routesColSize[bus]; j++)
+                    {
+                        int nextStop = routes[bus][j];
+
+                        if (nextStop == target)
+                        {
+                            return busCount;
+                        }
+
+                        if (!visitedStop[nextStop])
+                        {
+                            visitedStop[nextStop] = 1;
+                            queue[rear++] = nextStop;
+                        }
+                    }
+                }
+
+                temp = temp->next;
+            }
+        }
+    }
+
+    return -1;
+}
