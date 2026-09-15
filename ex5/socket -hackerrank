@@ -1,0 +1,138 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <sys/socket.h>
+#include <linux/in.h>
+#include <unistd.h>
+#include <sys/un.h>
+#include <string.h>
+#include <stdint.h>
+#include <inttypes.h>
+
+
+char *SERVER_ADDRESS = "socket";
+typedef struct
+{
+    int sock;
+    struct sockaddr address;
+    int addr_len;
+} connection_t;
+void write_string_to_socket(int sock_descriptor, char* message, uint32_t length);
+void read_string_from_socket(int sock_descriptor, char** message, uint32_t *length);
+
+void * process_client_connection(void * ptr)
+{
+    connection_t * conn;
+
+    if (!ptr) pthread_exit(0); 
+    conn = (connection_t *)ptr;
+
+    printf("Connection received\n");
+
+    int terminate_client = 0;
+    do
+    {
+        char *message = NULL;
+        uint32_t message_length = 0;
+
+       
+        read_string_from_socket(conn->sock, &message, &message_length);
+
+        printf("Received = %s\n", message);
+        write_string_to_socket(conn->sock, message, message_length);
+        
+
+        
+        if (strcmp(message, "END") == 0)
+            terminate_client = 1;
+        
+        free(message);
+
+    } while(!terminate_client);
+
+ 
+    printf("Closing client on socket %d\n", conn->sock);
+    close(conn->sock);
+    free(conn);
+    pthread_exit(0);
+}
+
+
+void write_string_to_socket(int sock_descriptor, char* message, uint32_t length)
+{
+    uint32_t len_network_order = htonl(length);
+    write(sock_descriptor, &len_network_order, sizeof(uint32_t));
+    write(sock_descriptor, message, length);
+}
+
+void read_string_from_socket(int sock_descriptor, char** message, uint32_t *length)
+{
+   
+    uint32_t len_network_order = 0;
+    read(sock_descriptor, &len_network_order, sizeof(uint32_t));
+    *length = ntohl(len_network_order);
+
+    if (length > 0) {
+        *message = (char *)malloc(((*length)+1)*sizeof(char));
+        (*message)[*length] = 0;
+        read(sock_descriptor, *message, *length);
+    }
+    else
+        *message = NULL;
+}
+
+int main(int argc, char ** argv)
+{
+    int sock = -1;
+    struct sockaddr_un address;
+    int port;
+    connection_t * connection;
+    pthread_t thread;
+
+
+    sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sock <= 0)
+    {
+        fprintf(stderr, "%s: error: cannot create socket\n", argv[0]);
+        return -3;
+    }
+    unlink(SERVER_ADDRESS);
+
+    memset(&address, 0, sizeof(address));
+    address.sun_family = AF_UNIX;
+    strncpy(address.sun_path, SERVER_ADDRESS, sizeof(address.sun_path)-1);
+    if (bind(sock, (struct sockaddr *)&address, sizeof(struct sockaddr_in)) < 0)
+    {
+        fprintf(stderr, "%s: error: cannot bind socket to port %d\n", argv[0], port);
+        return -4;
+    }
+
+   
+    if (listen(sock, 5) < 0)
+    {
+        fprintf(stderr, "%s: error: cannot listen on port\n", argv[0]);
+        return -5;
+    }
+
+    printf("%s: ready and listening\n", argv[0]);
+    
+    while (1)
+    {
+       
+        printf("Waiting for incoming connections\n");
+        connection = (connection_t *)malloc(sizeof(connection_t));
+        connection->sock = accept(sock, &connection->address, &connection->addr_len);
+        if (connection->sock <= 0)
+        {
+            free(connection);
+        }
+        else
+        {
+            /* start a new thread but do not wait for it */
+            pthread_create(&thread, 0, process_client_connection, (void *)connection);
+            pthread_detach(thread);
+        }
+    }
+    
+    return 0;
+}
