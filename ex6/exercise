@@ -1,0 +1,1016 @@
+[24bcs150@mepcolinux ex6]$cat cl1.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define SIZE 100
+
+// Create client socket
+void createSocket(int *clientSocket)
+{
+    *clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (*clientSocket < 0)
+    {
+        perror("Socket creation failed");
+        exit(1);
+    }
+
+    printf("Client socket created\n");
+}
+
+// Connect client to server
+void connectToServer(int clientSocket, char *ip, int port)
+{
+    struct sockaddr_in serverAddress;
+
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_port = htons(port);
+
+    if (inet_pton(AF_INET,
+                  ip,
+                  &serverAddress.sin_addr) <= 0)
+    {
+        perror("Invalid IP address");
+        exit(1);
+    }
+
+    if (connect(clientSocket,
+                (struct sockaddr *)&serverAddress,
+                sizeof(serverAddress)) < 0)
+    {
+        perror("Connection failed");
+        exit(1);
+    }
+
+    printf("Connected to server\n");
+}
+
+// Send message to server
+void sendMessage(int clientSocket, char *message)
+{
+    send(clientSocket,
+         message,
+         strlen(message) + 1,
+         0);
+}
+
+// Receive message from server
+int receiveMessage(int clientSocket, char *message)
+{
+    int bytes;
+
+    memset(message, 0, SIZE);
+
+    bytes = recv(clientSocket, message, SIZE, 0);
+
+    return bytes;
+}
+
+// Chat with server
+void chatWithServer(int clientSocket)
+{
+    char message[SIZE];
+
+    while (1)
+    {
+        printf("Client: ");
+
+        fgets(message, SIZE, stdin);
+
+        message[strcspn(message, "\n")] = '\0';
+
+        sendMessage(clientSocket, message);
+
+        if (strcmp(message, "exit") == 0)
+            break;
+
+        if (receiveMessage(clientSocket, message) <= 0)
+            break;
+
+        printf("Server: %s\n", message);
+
+        if (strcmp(message, "exit") == 0)
+            break;
+    }
+}
+
+// Run client
+void runClient(char *ip, int port)
+{
+    int clientSocket;
+
+    createSocket(&clientSocket);
+
+    connectToServer(clientSocket, ip, port);
+
+    chatWithServer(clientSocket);
+
+    close(clientSocket);
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc != 3)
+    {
+        printf("Usage: %s <server_ip> <port>\n", argv[0]);
+        return 1;
+    }
+
+    runClient(argv[1], atoi(argv[2]));
+
+    return 0;
+}
+
+[24bcs150@mepcolinux ex6]$cat ser1.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define SIZE 100
+
+// Create server socket
+void createServer(int *serverSocket)
+{
+    *serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (*serverSocket < 0)
+    {
+        perror("Socket creation failed");
+        exit(1);
+    }
+
+    printf("Server socket created\n");
+}
+
+// Bind server socket with port
+void bindServer(int serverSocket, int port)
+{
+    struct sockaddr_in serverAddress;
+
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_addr.s_addr = INADDR_ANY;
+    serverAddress.sin_port = htons(port);
+
+    if (bind(serverSocket,
+             (struct sockaddr *)&serverAddress,
+             sizeof(serverAddress)) < 0)
+    {
+        perror("Bind failed");
+        exit(1);
+    }
+
+    printf("Server bind successful\n");
+}
+
+// Listen for client
+void listenForClient(int serverSocket)
+{
+    if (listen(serverSocket, 5) < 0)
+    {
+        perror("Listen failed");
+        exit(1);
+    }
+
+    printf("Server waiting for client...\n");
+}
+
+// Accept client connection
+int acceptClient(int serverSocket,
+                 struct sockaddr_in *clientAddress,
+                 socklen_t *clientLength)
+{
+    int clientSocket;
+
+    clientSocket = accept(serverSocket,
+                          (struct sockaddr *)clientAddress,
+                          clientLength);
+
+    if (clientSocket < 0)
+    {
+        perror("Accept failed");
+        return -1;
+    }
+
+    printf("Client connected\n");
+
+    return clientSocket;
+}
+
+// Receive message from client
+int receiveMessage(int clientSocket, char *message)
+{
+    int bytes;
+
+    memset(message, 0, SIZE);
+
+    bytes = recv(clientSocket, message, SIZE, 0);
+
+    return bytes;
+}
+
+// Send message to client
+void sendMessage(int clientSocket, char *message)
+{
+    send(clientSocket,
+         message,
+         strlen(message) + 1,
+         0);
+}
+
+// Chat with client
+void chatWithClient(int clientSocket)
+{
+    char message[SIZE];
+
+    while (1)
+    {
+        if (receiveMessage(clientSocket, message) <= 0)
+            break;
+
+        if (strcmp(message, "exit") == 0)
+        {
+            printf("Client ended the chat\n");
+            break;
+        }
+
+        printf("Client: %s\n", message);
+
+        printf("Server: ");
+        fgets(message, SIZE, stdin);
+
+        message[strcspn(message, "\n")] = '\0';
+
+        sendMessage(clientSocket, message);
+
+        if (strcmp(message, "exit") == 0)
+            break;
+    }
+}
+
+// Close client socket
+void closeClient(int clientSocket)
+{
+    close(clientSocket);
+
+    printf("Client disconnected\n");
+}
+
+// Run iterative server
+void runServer(int port)
+{
+    int serverSocket;
+    int clientSocket;
+
+    struct sockaddr_in clientAddress;
+    socklen_t clientLength;
+
+    clientLength = sizeof(clientAddress);
+
+    createServer(&serverSocket);
+
+    bindServer(serverSocket, port);
+
+    listenForClient(serverSocket);
+
+    // Iterative server
+    while (1)
+    {
+        clientSocket = acceptClient(serverSocket,
+                                    &clientAddress,
+                                    &clientLength);
+
+        if (clientSocket < 0)
+            continue;
+
+        chatWithClient(clientSocket);
+
+        closeClient(clientSocket);
+
+        printf("Waiting for next client...\n");
+    }
+
+    close(serverSocket);
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc != 2)
+    {
+        printf("Usage: %s <port>\n", argv[0]);
+        return 1;
+    }
+
+    runServer(atoi(argv[1]));
+
+    return 0;
+}
+[24bcs150@mepcolinux ex6]$cc ser1.c
+[24bcs150@mepcolinux ex6]$./a.out 8000
+Server socket created
+Server bind successful
+Server waiting for client...
+Client connected
+Client: hi
+Server: hello
+Client: how are you
+Server: fine
+Client ended the chat
+Client disconnected
+Waiting for next client...
+[24bcs150@mepcolinux ex6]$cc cl1.c
+[24bcs150@mepcolinux ex6]$./a.out 172.16.16.200 8000
+Client socket created
+Connected to server
+Client: hi
+Server: hello
+Client: how are you
+Server: fine
+Client: exit
+[24bcs150@mepcolinux ex6]$cat cl2.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define SIZE 100
+
+void createSocket(int *clientSocket)
+{
+    *clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (*clientSocket < 0)
+    {
+        perror("Socket creation failed");
+        exit(1);
+    }
+}
+
+void connectToServer(int clientSocket, char *ip, int port)
+{
+    struct sockaddr_in serverAddress;
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_port = htons(port);
+    inet_pton(AF_INET, ip, &serverAddress.sin_addr);
+
+    if (connect(clientSocket, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) < 0)
+    {
+        perror("Connection failed");
+        exit(1);
+    }
+}
+
+void requestIP(int clientSocket)
+{
+    char ip[SIZE];
+    char mac[SIZE];
+    char message[SIZE];
+
+    printf("Enter IP address: ");
+    scanf("%s", ip);
+
+    send(clientSocket, ip, strlen(ip) + 1, 0);
+
+    recv(clientSocket, message, SIZE, 0);
+    printf("Server: %s\n", message);
+
+    if (strncmp(message, "IP not found", 12) == 0)
+    {
+        printf("Enter MAC address: ");
+        scanf("%s", mac);
+
+        send(clientSocket, mac, strlen(mac) + 1, 0);
+
+        memset(message, 0, SIZE);
+        recv(clientSocket, message, SIZE, 0);
+        printf("Server: %s\n", message);
+    }
+}
+
+void runClient(char *ip, int port)
+{
+    int clientSocket;
+    createSocket(&clientSocket);
+    connectToServer(clientSocket, ip, port);
+    requestIP(clientSocket);
+    close(clientSocket);
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc < 3) {
+        printf("Usage: %s <server_ip> <port>\n", argv[0]);
+        return 1;
+    }
+    runClient(argv[1], atoi(argv[2]));
+}
+[24bcs150@mepcolinux ex6]$cat ser2.c
+#define _XOPEN_SOURCE 500  
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define SIZE 100
+#define CMD_SIZE 256
+#define MAX_ENTRIES 50
+
+struct ARPEntry {
+    char ip[30];
+    char mac[30];
+};
+
+struct ARPEntry fallback_table[MAX_ENTRIES] = {
+    {"192.168.1.1", "AA:BB:CC:DD:EE:01"},
+    {"192.168.1.2", "AA:BB:CC:DD:EE:02"}
+};
+int entry_count = 2;
+
+void createServer(int *serverSocket) {
+    *serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (*serverSocket < 0) {
+        perror("Socket creation failed");
+        exit(1);
+    }
+    printf("Server socket created\n");
+}
+
+void bindServer(int serverSocket, int port) {
+    struct sockaddr_in serverAddress;
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_addr.s_addr = INADDR_ANY;
+    serverAddress.sin_port = htons(port);
+
+    if (bind(serverSocket, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) < 0) {
+        perror("Bind failed");
+        exit(1);
+    }
+    printf("Server bind successful\n");
+}
+
+
+int get_system_mac(const char *ip_address, char *output_mac) {
+    char command[CMD_SIZE];
+    char buffer[CMD_SIZE];
+    FILE *fp;
+    int found = 0;
+
+    snprintf(command, sizeof(command), "ip neigh | grep %s 2>/dev/null", ip_address);
+    
+    
+    fp = popen(command, "r");
+    if (fp == NULL) return -1;
+
+    while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+       
+        char *lladdr_ptr = strstr(buffer, "lladdr");
+        if (lladdr_ptr != NULL) {
+            char *mac_ptr = lladdr_ptr + 7; 
+            
+           
+            strncpy(output_mac, mac_ptr, 17);
+            output_mac[17] = '\0';             
+	    found = 1;
+            break;
+        }
+    }
+    pclose(fp);
+    return found ? 0 : -1;
+}
+
+void searchIP(int clientSocket) {
+    char ip[SIZE];
+    char mac[SIZE];
+    char message[SIZE];
+    char retrieved_mac[SIZE];
+    int i; 
+    recv(clientSocket, ip, SIZE, 0);
+    printf("Requested IP: %s\n", ip);
+
+    if (get_system_mac(ip, retrieved_mac) == 0) {
+        sprintf(message, "MAC Address: %s (From System)", retrieved_mac);
+        send(clientSocket, message, strlen(message) + 1, 0);
+        printf("IP found in system neighbor table\n");
+        return;
+    }
+
+    for (i = 0; i < entry_count; i++) {
+        if (strcmp(fallback_table[i].ip, ip) == 0) {
+            sprintf(message, "MAC Address: %s (From Memory)", fallback_table[i].mac);
+            send(clientSocket, message, strlen(message) + 1, 0);
+            printf("IP found in local cache\n");
+            return;
+        }
+    }
+
+    printf("IP not found\n");
+    strcpy(message, "IP not found. Enter MAC address:");
+    send(clientSocket, message, strlen(message) + 1, 0);
+
+    recv(clientSocket, mac, SIZE, 0);
+
+    if (entry_count < MAX_ENTRIES) {
+        strcpy(fallback_table[entry_count].ip, ip);
+        strcpy(fallback_table[entry_count].mac, mac);
+        entry_count++;
+        strcpy(message, "New ARP entry added successfully to local memory");
+        printf("New entry added locally\n");
+    } else {
+        strcpy(message, "Server cache full!");
+    }
+
+    send(clientSocket, message, strlen(message) + 1, 0);
+}
+
+void runServer(int port) {
+    int serverSocket, clientSocket;
+    struct sockaddr_in clientAddress;
+    socklen_t clientLength = sizeof(clientAddress);
+
+    createServer(&serverSocket);
+    bindServer(serverSocket, port);
+    listen(serverSocket, 5);
+    printf("ARP Server waiting on port %d...\n", port);
+
+    while (1) {
+        clientSocket = accept(serverSocket, (struct sockaddr *)&clientAddress, &clientLength);
+        if (clientSocket < 0) continue;
+
+        searchIP(clientSocket);
+        close(clientSocket);
+    }
+}
+
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        printf("Usage: %s <port>\n", argv[0]);
+        return 1;
+    }
+    runServer(atoi(argv[1]));
+}
+[24bcs150@mepcolinux ex6]$cc ser2.c
+[24bcs150@mepcolinux ex6]$./a.out 8002
+Server socket created
+Server bind successful
+ARP Server waiting on port 8002...
+Requested IP: 192.168.1.1
+IP found in local cache
+[24bcs150@mepcolinux ex6]$cc cl2.c
+[24bcs150@mepcolinux ex6]$./a.out 172.16.16.200 8002
+Enter IP address: 192.168.1.1
+Server: MAC Address: AA:BB:CC:DD:EE:01 (From Memory)
+[24bcs150@mepcolinux ex6]$cc ser2.c
+[24bcs150@mepcolinux ex6]$./a.out 8003
+Server socket created
+Server bind successful
+ARP Server waiting on port 8003...
+Requested IP: 172.16.16.500
+IP not found
+New entry added locally
+[24bcs150@mepcolinux ex6]$cc cl2.c
+[24bcs150@mepcolinux ex6]$./a.out 172.16.16.200 8003
+Enter IP address: 172.16.16.500
+Server: IP not found. Enter MAC address:
+Enter MAC address: AA:MM:RR:EE:30
+Server: New ARP entry added successfully to local memory
+[24bcs150@mepcolinux ex6]$cat cl3.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define SIZE 1024
+
+// Create client socket
+void createSocket(int *clientSocket)
+{
+    *clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (*clientSocket < 0)
+    {
+        perror("Socket creation failed");
+        exit(1);
+    }
+
+    printf("Client socket created\n");
+}
+
+// Connect to server
+void connectToServer(int clientSocket, char *ip, int port)
+{
+    struct sockaddr_in serverAddress;
+
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_port = htons(port);
+
+    if (inet_pton(AF_INET,
+                  ip,
+                  &serverAddress.sin_addr) <= 0)
+    {
+        perror("Invalid IP address");
+        exit(1);
+    }
+
+    if (connect(clientSocket,
+                (struct sockaddr *)&serverAddress,
+                sizeof(serverAddress)) < 0)
+    {
+        perror("Connection failed");
+        exit(1);
+    }
+
+    printf("Connected to server\n");
+}
+
+// Send requested file name
+void sendFileName(int clientSocket, char *fileName)
+{
+    send(clientSocket,
+         fileName,
+         strlen(fileName) + 1,
+         0);
+}
+
+// Receive server message
+void receiveMessage(int clientSocket, char *message)
+{
+    memset(message, 0, SIZE);
+
+    recv(clientSocket,
+         message,
+         SIZE,
+         0);
+}
+
+// Receive file
+void receiveFile(int clientSocket, long fileSize)
+{
+    char buffer[SIZE];
+
+    long received = 0;
+
+    printf("\nFile content:\n");
+    printf("-------------------------\n");
+
+    while (received < fileSize)
+    {
+        int bytes;
+
+        bytes = recv(clientSocket,
+                     buffer,
+                     SIZE,
+                     0);
+
+        if (bytes <= 0)
+            break;
+
+        fwrite(buffer,
+               1,
+               bytes,
+               stdout);
+
+        received = received + bytes;
+    }
+
+    printf("\n-------------------------\n");
+}
+
+// Request file from server
+void requestFile(int clientSocket)
+{
+    char fileName[SIZE];
+    char message[SIZE];
+
+    long fileSize;
+
+    printf("Enter file name: ");
+    scanf("%s", fileName);
+
+    sendFileName(clientSocket, fileName);
+
+    receiveMessage(clientSocket, message);
+
+    if (strcmp(message, "FILE_NOT_FOUND") == 0)
+    {
+        printf("File not found\n");
+        return;
+    }
+
+    printf("File found\n");
+
+    // Receive file size
+    recv(clientSocket,
+         &fileSize,
+         sizeof(fileSize),
+         0);
+
+    receiveFile(clientSocket, fileSize);
+
+    printf("File received successfully\n");
+}
+
+// Run client
+void runClient(char *ip, int port)
+{
+    int clientSocket;
+
+    createSocket(&clientSocket);
+
+    connectToServer(clientSocket, ip, port);
+
+    requestFile(clientSocket);
+
+    close(clientSocket);
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc != 3)
+    {
+        printf("Usage: %s <server_ip> <port>\n", argv[0]);
+        return 1;
+    }
+
+    runClient(argv[1], atoi(argv[2]));
+
+    return 0;
+}
+
+[24bcs150@mepcolinux ex6]$cat ser3.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define SIZE 1024
+
+// Create server socket
+void createServer(int *serverSocket)
+{
+    *serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (*serverSocket < 0)
+    {
+        perror("Socket creation failed");
+        exit(1);
+    }
+
+    printf("Server socket created\n");
+}
+
+// Bind server socket
+void bindServer(int serverSocket, int port)
+{
+    struct sockaddr_in serverAddress;
+
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_addr.s_addr = INADDR_ANY;
+    serverAddress.sin_port = htons(port);
+
+    if (bind(serverSocket,
+             (struct sockaddr *)&serverAddress,
+             sizeof(serverAddress)) < 0)
+    {
+        perror("Bind failed");
+        exit(1);
+    }
+
+    printf("Server bind successful\n");
+}
+
+// Listen for client
+void listenForClient(int serverSocket)
+{
+    if (listen(serverSocket, 5) < 0)
+    {
+        perror("Listen failed");
+        exit(1);
+    }
+
+    printf("File server waiting for client...\n");
+}
+
+// Accept client
+int acceptClient(int serverSocket,
+                 struct sockaddr_in *clientAddress,
+                 socklen_t *clientLength)
+{
+    int clientSocket;
+
+    clientSocket = accept(serverSocket,
+                          (struct sockaddr *)clientAddress,
+                          clientLength);
+
+    if (clientSocket < 0)
+    {
+        perror("Accept failed");
+        return -1;
+    }
+
+    printf("Client connected\n");
+
+    return clientSocket;
+}
+
+// Send all file data
+void sendAll(int clientSocket, char *data, long size)
+{
+    long sent = 0;
+    int bytes;
+
+    while (sent < size)
+    {
+        bytes = send(clientSocket,
+                     data + sent,
+                     size - sent,
+                     0);
+
+        if (bytes <= 0)
+            break;
+
+        sent = sent + bytes;
+    }
+}
+
+// Receive file name
+void receiveFileName(int clientSocket, char *fileName)
+{
+    memset(fileName, 0, SIZE);
+
+    recv(clientSocket,
+         fileName,
+         SIZE,
+         0);
+}
+
+// Send file to client
+void sendFile(int clientSocket)
+{
+    char fileName[SIZE];
+    char buffer[SIZE];
+
+    FILE *file;
+    long fileSize;
+
+    receiveFileName(clientSocket, fileName);
+
+    printf("File requested: %s\n", fileName);
+
+    file = fopen(fileName, "rb");
+
+    if (file == NULL)
+    {
+        strcpy(buffer, "FILE_NOT_FOUND");
+
+        send(clientSocket,
+             buffer,
+             strlen(buffer) + 1,
+             0);
+
+        printf("File not found\n");
+
+        return;
+    }
+
+    strcpy(buffer, "FILE_FOUND");
+
+    send(clientSocket,
+         buffer,
+         strlen(buffer) + 1,
+         0);
+
+    // Find file size
+    fseek(file, 0, SEEK_END);
+
+    fileSize = ftell(file);
+
+    rewind(file);
+
+    // Send file size
+    send(clientSocket,
+         &fileSize,
+         sizeof(fileSize),
+         0);
+
+    // Send file contents
+    while (!feof(file))
+    {
+        int bytesRead;
+
+        bytesRead = fread(buffer,
+                          1,
+                          SIZE,
+                          file);
+
+        if (bytesRead > 0)
+        {
+            sendAll(clientSocket,
+                    buffer,
+                    bytesRead);
+        }
+    }
+
+    fclose(file);
+
+    printf("File sent successfully\n");
+}
+
+// Close client
+void closeClient(int clientSocket)
+{
+    close(clientSocket);
+
+    printf("Client disconnected\n");
+}
+
+// Run iterative file server
+void runServer(int port)
+{
+    int serverSocket;
+    int clientSocket;
+
+    struct sockaddr_in clientAddress;
+    socklen_t clientLength;
+
+    clientLength = sizeof(clientAddress);
+
+    createServer(&serverSocket);
+
+    bindServer(serverSocket, port);
+
+    listenForClient(serverSocket);
+
+    while (1)
+    {
+        clientSocket = acceptClient(serverSocket,
+                                    &clientAddress,
+                                    &clientLength);
+
+        if (clientSocket < 0)
+            continue;
+
+        sendFile(clientSocket);
+
+        closeClient(clientSocket);
+    }
+
+    close(serverSocket);
+}
+
+int main(int argc, char *argv[])
+{
+    if (argc != 2)
+    {
+        printf("Usage: %s <port>\n", argv[0]);
+        return 1;
+    }
+
+    runServer(atoi(argv[1]));
+
+    return 0;
+}
+
+
+[24bcs150@mepcolinux ex6]$cc ser3.c
+[24bcs150@mepcolinux ex6]$./a.out 8020
+Server socket created
+Server bind successful
+File server waiting for client...
+Client connected
+File requested: msg.txt
+File sent successfully
+Client disconnected
+[24bcs150@mepcolinux ex6]$./a.out 172.16.16.200 8020
+Client socket created
+Connected to server
+Enter file name: msg.txt
+File found
+
+File content:
+-------------------------
+i am sona
+-------------------------
+File received successfully
+[24bcs150@mepcolinux ex6]$cc ser3.c
+[24bcs150@mepcolinux ex6]$./a.out 8021
+Server socket created
+Server bind successful
+File server waiting for client...
+Client connected
+File requested: rm.txt
+File not found
+Client disconnected
+[24bcs150@mepcolinux ex6]$cc cl3.c
+[24bcs150@mepcolinux ex6]$./a.out 172.16.16.200 8021
+Client socket created
+Connected to server
+Enter file name:
+rm.txt
+File not found
