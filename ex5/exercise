@@ -1,0 +1,602 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#define SERVER_PORT 5000
+int s;
+int len;
+char buffer[256];
+struct sockaddr_in servAddr;
+struct sockaddr_in clntAddr;
+socklen_t clntAddrLen;
+int main(void)
+{
+    memset(&servAddr, 0, sizeof(servAddr));
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_port = htons(SERVER_PORT);
+    servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    s = socket(PF_INET, SOCK_DGRAM, 0);
+    if (s < 0)
+    {
+        perror("Error: socket failed!");
+        exit(1);
+    }
+    if (bind(s, (struct sockaddr*)&servAddr, sizeof(servAddr)) < 0)
+    {
+        perror("Error: bind failed!");
+        exit(1);
+    }
+    printf("Server started. Waiting for messages on port %d...\n", SERVER_PORT);
+        clntAddrLen = sizeof(clntAddr);
+        len = recvfrom(s, buffer, sizeof(buffer) - 1, 0,
+                        (struct sockaddr*)&clntAddr, &clntAddrLen);
+        if (len < 0)
+        {
+            perror("Error: recvfrom failed!");
+        }
+        buffer[len] = '\0';
+        printf("Received from client: %s\n", buffer);
+    close(s);
+    return 0;
+}
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+int s;
+int len;
+char* servName;
+int servPort;
+char string[256];
+struct sockaddr_in servAddr;
+int main(int argc, char* argv[])
+{
+    if (argc != 3)
+    {
+        printf("Error: two arguments are needed\n");
+        exit(1);
+    }
+    servName = argv[1];
+    servPort = atoi(argv[2]);
+    printf("Enter string to send: ");
+    fgets(string, sizeof(string), stdin);
+    string[strcspn(string, "\n")] = '\0';
+    memset(&servAddr, 0, sizeof(servAddr));
+    servAddr.sin_family = AF_INET;
+    inet_pton(AF_INET, servName, &servAddr.sin_addr);
+    servAddr.sin_port = htons(servPort);
+    s = socket(PF_INET, SOCK_DGRAM, 0);
+    if (s < 0)
+    {
+        perror("Error: socket failed!");
+        exit(1);
+    }
+    len = sendto(s, string, strlen(string), 0,
+                  (struct sockaddr*)&servAddr, sizeof(servAddr));
+    if (len < 0)
+    {
+        perror("Error: sendto failed!");
+        exit(1);
+    }
+    printf("Sent to server: %s\n", string);
+    close(s);
+    return 0;
+}
+[24bcs150@mepcolinux ex5]$cc ser1.c
+[24bcs150@mepcolinux ex5]$./a.out
+Server started. Waiting for messages on port 5000...
+Received from client: reena
+[24bcs150@mepcolinux ex5]$cc cl1.c
+[24bcs150@mepcolinux ex5]$./a.out 172.16.16.200 5000
+Enter string to send: reena
+Sent to server: reena
+[24bcs150@mepcolinux ex5]$cat ser2.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#define SERVER_PORT 6000
+int s;
+int len;
+int i;
+char buffer[256];
+char revBuffer[256];
+struct sockaddr_in servAddr;
+struct sockaddr_in clntAddr;
+socklen_t clntAddrLen;
+
+int main(void)
+{
+    memset(&servAddr, 0, sizeof(servAddr));
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_port = htons(SERVER_PORT);
+    servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    s = socket(PF_INET, SOCK_DGRAM, 0);
+    if (s < 0)
+    {
+        perror("Error: socket failed!");
+        exit(1);
+    }
+
+    if (bind(s, (struct sockaddr*)&servAddr, sizeof(servAddr)) < 0)
+    {
+        perror("Error: bind failed!");
+        exit(1);
+    }
+
+    printf("Reverse server started on port %d...\n", SERVER_PORT);
+
+        clntAddrLen = sizeof(clntAddr);
+
+        len = recvfrom(s, buffer, sizeof(buffer) - 1, 0,
+                        (struct sockaddr*)&clntAddr, &clntAddrLen);
+        if (len < 0)
+        {
+            perror("Error: recvfrom failed!");
+        }
+
+        buffer[len] = '\0';
+        printf("Received: %s\n", buffer);
+
+        for (i = 0; i < len; i++)
+            revBuffer[i] = buffer[len - 1 - i];
+        revBuffer[len] = '\0';
+
+        sendto(s, revBuffer, len, 0,
+               (struct sockaddr*)&clntAddr, clntAddrLen);
+
+    close(s);
+    return 0;
+}
+[24bcs150@mepcolinux ex5]$cat cl2.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+
+int s;
+int len;
+char* servName;
+int servPort;
+char string[256];
+char buffer[256 + 1];
+struct sockaddr_in servAddr;
+
+int main(int argc, char* argv[])
+{
+    if (argc != 3)
+    {
+        printf("Error: two arguments are needed! Usage: %s <server-ip> <port>\n", argv[0]);
+        exit(1);
+    }
+
+    servName = argv[1];
+    servPort = atoi(argv[2]);
+
+    // Get string from user
+    printf("Enter string to send: ");
+    fgets(string, sizeof(string), stdin);
+    string[strcspn(string, "\n")] = '\0';   // remove trailing newline
+
+    memset(&servAddr, 0, sizeof(servAddr));
+    servAddr.sin_family = AF_INET;
+    inet_pton(AF_INET, servName, &servAddr.sin_addr);
+    servAddr.sin_port = htons(servPort);
+
+    s = socket(PF_INET, SOCK_DGRAM, 0);
+    if (s < 0)
+    {
+        perror("Error: socket failed!");
+        exit(1);
+    }
+
+    // Send string
+    len = sendto(s, string, strlen(string), 0,
+                  (struct sockaddr*)&servAddr, sizeof(servAddr));
+    if (len < 0)
+    {
+        perror("Error: sendto failed!");
+        exit(1);
+    }
+
+    // Receive reversed string
+    len = recvfrom(s, buffer, sizeof(buffer) - 1, 0, NULL, NULL);
+    if (len < 0)
+    {
+        perror("Error: recvfrom failed!");
+        exit(1);
+    }
+
+    buffer[len] = '\0';
+    printf("Reversed string received: %s\n", buffer);
+
+    close(s);
+    return 0;
+}
+[24bcs150@mepcolinux ex5]$cc ser2.c
+[24bcs150@mepcolinux ex5]$./a.out
+Reverse server started on port 6000...
+Received : reena hi
+[24bcs150@mepcolinux ex5]$cc cl2.c
+[24bcs150@mepcolinux ex5]$./a.out 172.16.16.200 6000
+Enter string to send: reena hi
+Reversed string received: ih aneer
+[24bcs150@mepcolinux ex5]$cat ser3.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+
+#define SERVER_PORT 8003
+
+char generator[20];
+int  genLen;
+char work[200];
+char rem[10];
+
+int s;
+int len;
+struct sockaddr_in servAddr;
+struct sockaddr_in clntAddr;
+socklen_t clntAddrLen;
+char buffer[256];
+char* sep;
+
+void modulo2Divide(void)
+{
+    int i, j, n;
+
+    n = strlen(work);
+    for (i = 0; i <= n - genLen; i++)
+    {
+        if (work[i] == '1')
+        {
+            for (j = 0; j < genLen; j++)
+                work[i + j] = (work[i + j] == generator[j]) ? '0' : '1';
+        }
+    }
+    strcpy(rem, work + (n - (genLen - 1)));
+}
+
+int main(void)
+{
+    int i, allZero;
+
+    memset(&servAddr, 0, sizeof(servAddr));
+    servAddr.sin_family = AF_INET;
+    servAddr.sin_port = htons(SERVER_PORT);
+    servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    s = socket(PF_INET, SOCK_DGRAM, 0);
+    if (s < 0)
+    {
+        perror("Error: socket failed!");
+        exit(1);
+    }
+
+    if (bind(s, (struct sockaddr*)&servAddr, sizeof(servAddr)) < 0)
+    {
+        perror("Error: bind failed!");
+        exit(1);
+    }
+
+    printf("CRC server started on port %d...\n", SERVER_PORT);
+
+
+        clntAddrLen = sizeof(clntAddr);
+
+        len = recvfrom(s, buffer, sizeof(buffer) - 1, 0,
+                        (struct sockaddr*)&clntAddr, &clntAddrLen);
+        if (len < 0)
+        {
+            perror("Error: recvfrom failed!");
+
+        }
+
+        buffer[len] = '\0';
+
+        sep = strchr(buffer, '|');
+        if (sep == NULL)
+        {
+            printf("Malformed message received, ignoring.\n");
+
+        }
+
+        *sep = '\0';
+        strcpy(generator, buffer);
+        genLen = strlen(generator);
+        strcpy(work, sep + 1);
+
+        printf("Generator  : %s\n", generator);
+        printf("Codeword   : %s\n", work);
+
+        modulo2Divide();
+
+        allZero = 1;
+        for (i = 0; i < genLen - 1; i++)
+        {
+            if (rem[i] != '0')
+            {
+                allZero = 0;
+                break;
+            }
+        }
+
+        if (allZero)
+            strcpy(buffer, "No error detected - packet accepted");
+        else
+            strcpy(buffer, "Error detected - packet discarded");
+
+        sendto(s, buffer, strlen(buffer), 0,
+               (struct sockaddr*)&clntAddr, clntAddrLen);
+
+
+    close(s);
+    return 0;
+}
+
+[24bcs150@mepcolinux ex5]$cat client3.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+
+char generator[32];
+int  genLen;
+char data[100];
+char binaryData[800];
+char work[1000];
+char rem[32];
+char codeword[1000];
+char message[1100];
+char reply[256];
+char fileName[100];
+
+int s;
+int len;
+char* servName;
+int servPort;
+struct sockaddr_in servAddr;
+FILE* fp;
+
+void parsePolynomial(const char* polyInput, char* outputBinary)
+{
+    int coeffs[32] = {0};
+    int maxDegree = 0;
+    char copy[100];
+    strncpy(copy, polyInput, sizeof(copy));
+    copy[sizeof(copy) - 1] = '\0';
+
+    char* token = strtok(copy, "+");
+    while (token != NULL)
+    {
+        int deg = 0;
+        char* xPtr = strchr(token, 'x');
+        if (!xPtr) xPtr = strchr(token, 'X');
+
+        if (xPtr)
+        {
+            char* caretPtr = strchr(xPtr, '^');
+            if (caretPtr)
+                deg = atoi(caretPtr + 1);
+            else
+                deg = 1;
+        }
+        else if (strchr(token, '1'))
+        {
+            deg = 0;
+        }
+
+        if (deg >= 0 && deg < 32)
+        {
+            coeffs[deg] = 1;
+            if (deg > maxDegree) maxDegree = deg;
+        }
+        token = strtok(NULL, "+");
+    }
+
+    int idx = 0;
+    int i;
+    for (i = maxDegree; i >= 0; i--)
+    {
+        outputBinary[idx++] = coeffs[i] ? '1' : '0';
+    }
+    outputBinary[idx] = '\0';
+}
+
+void textToBinaryString(const char* text, char* output)
+{
+    output[0] = '\0';
+    int i;
+    int bit;
+    for (i = 0; text[i] != '\0'; i++)
+    {
+        char ch = text[i];
+        int i;
+        for (bit = 7; bit >= 0; bit--)
+        {
+            if ((ch >> bit) & 1)
+                strcat(output, "1");
+            else
+                strcat(output, "0");
+        }
+    }
+}
+
+void modulo2Divide(void)
+{
+    int i, j, n;
+    n = strlen(work);
+    for (i = 0; i <= n - genLen; i++)
+    {
+        if (work[i] == '1')
+        {
+            for (j = 0; j < genLen; j++)
+                work[i + j] = (work[i + j] == generator[j]) ? '0' : '1';
+        }
+    }
+    strcpy(rem, work + (n - (genLen - 1)));
+}
+
+int main(int argc, char* argv[])
+{
+    int i, pos;
+    char choice;
+    char rawPolyInput[100];
+
+    if (argc != 3)
+    {
+        printf("Error: two arguments are needed\n", argv[0]);
+        exit(1);
+    }
+
+    servName = argv[1];
+    servPort = atoi(argv[2]);
+
+    printf("Enter generator polynomial: ");
+    fgets(rawPolyInput, sizeof(rawPolyInput), stdin);
+    rawPolyInput[strcspn(rawPolyInput, "\n")] = '\0';
+
+    parsePolynomial(rawPolyInput, generator);
+    genLen = strlen(generator);
+    printf(" Polynomial Binary: %s (Length: %d)\n\n", generator, genLen);
+
+    printf("Enter input file name: ");
+    fgets(fileName, sizeof(fileName), stdin);
+    fileName[strcspn(fileName, "\n")] = '\0';
+
+    fp = fopen(fileName, "r");
+    if (fp == NULL)
+    {
+        perror("Error: could not open file!");
+        exit(1);
+    }
+    fgets(data, sizeof(data), fp);
+    data[strcspn(data, "\n")] = '\0';
+    fclose(fp);
+
+    printf("Data : %s\n", data);
+    textToBinaryString(data, binaryData);
+    printf(" Binary form   : %s\n\n", binaryData);
+
+    strcpy(work, binaryData);
+    for (i = 0; i < genLen - 1; i++)
+        strcat(work, "0");
+    modulo2Divide();
+
+    strcpy(codeword, binaryData);
+    strcat(codeword, rem);
+
+    printf("Generated CRC bits : %s\n", rem);
+    printf("Codeword to send   : %s\n\n", codeword);
+
+    printf("Do you want to change a bit  (y/n): ");
+    scanf(" %c", &choice);
+
+    if (choice == 'y' || choice == 'Y')
+    {
+        printf("Enter bit position to flip (1 to %d): ", (int)strlen(codeword));
+        scanf("%d", &pos);
+        pos = pos - 1;
+        if (pos >= 0 && pos < (int)strlen(codeword))
+            codeword[pos] = (codeword[pos] == '0') ? '1' : '0';
+        printf("Modified codeword  : %s\n", codeword);
+    }
+
+    strcpy(message, generator);
+    strcat(message, "|");
+    strcat(message, codeword);
+
+    memset(&servAddr, 0, sizeof(servAddr));
+    servAddr.sin_family = AF_INET;
+    inet_pton(AF_INET, servName, &servAddr.sin_addr);
+    servAddr.sin_port = htons(servPort);
+
+    s = socket(PF_INET, SOCK_DGRAM, 0);
+    if (s < 0)
+    {
+        perror("Error: socket failed!");
+        exit(1);
+    }
+
+    len = sendto(s, message, strlen(message), 0,
+                  (struct sockaddr*)&servAddr, sizeof(servAddr));
+    if (len < 0)
+    {
+        perror("Error: sendto failed!");
+        exit(1);
+    }
+
+    len = recvfrom(s, reply, sizeof(reply) - 1, 0, NULL, NULL);
+    if (len < 0)
+    {
+        perror("Error: recvfrom failed!");
+        exit(1);
+    }
+
+    reply[len] = '\0';
+    printf("Server response: %s\n", reply);
+
+    close(s);
+    return 0;
+}
+[24bcs150@mepcolinux ex5]$cc ser3.c
+[24bcs150@mepcolinux ex5]$./a.out
+CRC server started on port 8003...
+Generator  : 101
+Codeword   : 0110100100100000011000010110110100100000011100100110010101100101011011100110000111
+[24bcs150@mepcolinux ex5]$cc cl3.c
+[24bcs150@mepcolinux ex5]$./a.out 172.16.16.200 8003
+Enter generator polynomial: x^2+1
+ Polynomial Binary: 101 (Length: 3)
+
+Enter input file name: msg.txt
+Data : i am reena
+ Binary form   : 01101001001000000110000101101101001000000111001001100101011001010110111001100001
+
+Generated CRC bits : 11
+Codeword to send   : 0110100100100000011000010110110100100000011100100110010101100101011011100110000111
+
+Do you want to change a bit  (y/n): n
+Server response: No error detected - packet accepted
+[24bcs150@mepcolinux ex5]$cc ser3.c
+[24bcs150@mepcolinux ex5]$./a.out
+CRC server started on port 8003...
+Generator  : 101
+Codeword   : 0110000100100000011000010110110100100000011100100110010101100101011011100110000111
+[24bcs150@mepcolinux ex5]$cc cl3.c
+[24bcs150@mepcolinux ex5]$./a.out 172.16.16.200 8003
+Enter generator polynomial: x^2+1
+Polynomial Binary: 101 (Length: 3)
+
+Enter input file name: msg.txt
+Data : i am reena
+Binary form   : 01101001001000000110000101101101001000000111001001100101011001010110111001100001
+
+Generated CRC bits : 11
+Codeword to send   : 0110100100100000011000010110110100100000011100100110010101100101011011100110000111
+
+Do you want to change a bit  (y/n): y
+Enter bit position to flip (1 to 82): 5
+Modified codeword  : 0110000100100000011000010110110100100000011100100110010101100101011011100110000111
+Server response: Error detected - packet discarded
