@@ -1,0 +1,373 @@
+Movie Ticket Booking System Using TCP
+
+//server.c
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <time.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
+#define PORT 5003
+#define MOVIES 3
+#define MAX_BOOKINGS 100
+
+struct Movie {
+    int id;
+    char name[50];
+    char show[20];
+    int seats;
+    float price;
+};
+
+struct Booking {
+    int id;
+    int movie_id;
+    char customer[50];
+    int tickets;
+    int active;
+};
+
+struct Movie movies[MOVIES] = {
+    {1, "Leo", "10:00 AM", 50, 150},
+    {2, "Jailer", "02:00 PM", 40, 180},
+    {3, "Vikram", "06:00 PM", 30, 200}
+};
+
+struct Booking bookings[MAX_BOOKINGS];
+int count = 0;
+int next_id = 1001;
+
+void log_activity(const char *message) {
+    FILE *fp = fopen("movie.log", "a");
+
+    if (fp != NULL) {
+        time_t now = time(NULL);
+        fprintf(fp, "%s : %s\n", ctime(&now), message);
+        fclose(fp);
+    }
+}
+
+void process_request(int client, char request[]) {
+    char response[4096] = "";
+    int choice, movie_id, tickets, booking_id;
+    int i, j, found = 0;
+    char customer[50];
+
+    if (sscanf(request, "%d", &choice) != 1) {
+        strcpy(response, "Invalid request.");
+    }
+    else if (choice == 1) {
+        for (i = 0; i < MOVIES; i++) {
+            char line[200];
+
+            snprintf(line, sizeof(line),
+                "Movie ID: %d | Movie: %s | Show: %s | "
+                "Seats: %d | Price: Rs. %.2f\n",
+                movies[i].id, movies[i].name, movies[i].show,
+                movies[i].seats, movies[i].price);
+
+            strncat(response, line,
+                sizeof(response) - strlen(response) - 1);
+        }
+    }
+    else if (choice == 2) {
+        if (sscanf(request, "%d %d", &choice, &movie_id) != 2) {
+            strcpy(response, "Invalid movie ID.");
+        } else {
+            for (i = 0; i < MOVIES; i++) {
+                if (movies[i].id == movie_id) {
+                    snprintf(response, sizeof(response),
+                        "Movie: %s\nShow time: %s\n"
+                        "Available seats: %d\nTicket price: Rs. %.2f",
+                        movies[i].name, movies[i].show,
+                        movies[i].seats, movies[i].price);
+                    found = 1;
+                    break;
+                }
+            }
+
+            if (!found)
+                strcpy(response, "Movie not found.");
+        }
+    }
+    else if (choice == 3) {
+        if (sscanf(request, "%d %d %49s %d",
+                   &choice, &movie_id, customer, &tickets) != 4) {
+            strcpy(response, "Invalid booking details.");
+        } else {
+            for (i = 0; i < MOVIES; i++) {
+                if (movies[i].id == movie_id) {
+                    found = 1;
+                    break;
+                }
+            }
+
+            if (!found) {
+                strcpy(response, "Movie not found.");
+            }
+            else if (tickets <= 0 || movies[i].seats < tickets) {
+                strcpy(response, "Requested seats are unavailable.");
+            }
+            else if (count >= MAX_BOOKINGS) {
+                strcpy(response, "Booking limit reached.");
+            }
+            else {
+                movies[i].seats -= tickets;
+
+                bookings[count].id = next_id++;
+                bookings[count].movie_id = movie_id;
+                strcpy(bookings[count].customer, customer);
+                bookings[count].tickets = tickets;
+                bookings[count].active = 1;
+
+                snprintf(response, sizeof(response),
+                    "Booking successful!\nBooking ID: %d\n"
+                    "Customer: %s\nMovie: %s\nShow: %s\n"
+                    "Tickets: %d\nTotal amount: Rs. %.2f",
+                    bookings[count].id, customer,
+                    movies[i].name, movies[i].show,
+                    tickets, movies[i].price * tickets);
+
+                count++;
+                log_activity("Tickets booked successfully");
+            }
+        }
+    }
+    else if (choice == 4) {
+        if (sscanf(request, "%d %d", &choice, &booking_id) != 2) {
+            strcpy(response, "Invalid booking ID.");
+        } else {
+            for (i = 0; i < count; i++) {
+                if (bookings[i].id == booking_id &&
+                    bookings[i].active) {
+
+                    for (j = 0; j < MOVIES; j++) {
+                        if (movies[j].id == bookings[i].movie_id) {
+                            movies[j].seats += bookings[i].tickets;
+                            break;
+                        }
+                    }
+
+                    bookings[i].active = 0;
+                    strcpy(response, "Booking cancelled successfully.");
+                    log_activity("Booking cancelled");
+                    found = 1;
+                    break;
+                }
+            }
+
+            if (!found)
+                strcpy(response, "Active booking not found.");
+        }
+    }
+    else if (choice == 5) {
+        if (sscanf(request, "%d %d", &choice, &booking_id) != 2) {
+            strcpy(response, "Invalid booking ID.");
+        } else {
+            for (i = 0; i < count; i++) {
+                if (bookings[i].id == booking_id) {
+                    for (j = 0; j < MOVIES; j++)
+                        if (movies[j].id == bookings[i].movie_id)
+                            break;
+
+                    snprintf(response, sizeof(response),
+                        "Booking ID: %d\nCustomer: %s\n"
+                        "Movie: %s\nTickets: %d\nStatus: %s",
+                        bookings[i].id, bookings[i].customer,
+                        j < MOVIES ? movies[j].name : "Unknown",
+                        bookings[i].tickets,
+                        bookings[i].active ? "CONFIRMED" : "CANCELLED");
+
+                    found = 1;
+                    break;
+                }
+            }
+
+            if (!found)
+                strcpy(response, "Booking not found.");
+        }
+    }
+    else {
+        strcpy(response, "Invalid menu choice.");
+    }
+
+    send(client, response, strlen(response), 0);
+    log_activity("Client request processed");
+}
+
+int main() {
+    int server_fd, client_fd;
+    struct sockaddr_in server, client;
+    socklen_t len = sizeof(client);
+    char request[1024];
+
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (server_fd < 0) {
+        perror("Socket creation failed");
+        return 1;
+    }
+
+    int opt = 1;
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR,
+               &opt, sizeof(opt));
+
+    memset(&server, 0, sizeof(server));
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(PORT);
+
+    if (bind(server_fd, (struct sockaddr *)&server,
+             sizeof(server)) < 0) {
+        perror("Bind failed");
+        close(server_fd);
+        return 1;
+    }
+
+    if (listen(server_fd, 5) < 0) {
+        perror("Listen failed");
+        close(server_fd);
+        return 1;
+    }
+
+    printf("Movie booking server running on port %d\n", PORT);
+
+    while (1) {
+        client_fd = accept(server_fd,
+                           (struct sockaddr *)&client, &len);
+
+        if (client_fd < 0)
+            continue;
+
+        memset(request, 0, sizeof(request));
+
+        ssize_t n = recv(client_fd, request,
+                         sizeof(request) - 1, 0);
+
+        if (n > 0) {
+            request[n] = '\0';
+            process_request(client_fd, request);
+        }
+
+        close(client_fd);
+    }
+
+    close(server_fd);
+    return 0;
+}
+
+
+//client.c
+
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
+#define PORT 5003
+
+int main() {
+    int choice, movie_id, tickets, booking_id;
+    int sock;
+    char customer[50];
+    char request[1024], response[4096];
+    struct sockaddr_in server;
+    ssize_t n;
+
+    while (1) {
+        printf("\n--- Movie Ticket Booking System ---\n");
+        printf("1. View movies\n");
+        printf("2. Check seat availability\n");
+        printf("3. Book tickets\n");
+        printf("4. Cancel booking\n");
+        printf("5. View booking details\n");
+        printf("6. Exit\n");
+        printf("Enter your choice: ");
+
+        if (scanf("%d", &choice) != 1)
+            break;
+
+        if (choice == 6)
+            break;
+
+        if (choice == 1) {
+            strcpy(request, "1");
+        }
+        else if (choice == 2) {
+            printf("Enter movie ID: ");
+            scanf("%d", &movie_id);
+
+            snprintf(request, sizeof(request),
+                     "2 %d", movie_id);
+        }
+        else if (choice == 3) {
+            printf("Enter movie ID: ");
+            scanf("%d", &movie_id);
+
+            printf("Enter customer name (no spaces): ");
+            scanf("%49s", customer);
+
+            printf("Enter number of tickets: ");
+            scanf("%d", &tickets);
+
+            snprintf(request, sizeof(request),
+                     "3 %d %s %d",
+                     movie_id, customer, tickets);
+        }
+        else if (choice == 4 || choice == 5) {
+            printf("Enter booking ID: ");
+            scanf("%d", &booking_id);
+
+            snprintf(request, sizeof(request),
+                     "%d %d", choice, booking_id);
+        }
+        else {
+            printf("Invalid choice.\n");
+            continue;
+        }
+
+        sock = socket(AF_INET, SOCK_STREAM, 0);
+
+        if (sock < 0) {
+            perror("Socket creation failed");
+            continue;
+        }
+
+        memset(&server, 0, sizeof(server));
+        server.sin_family = AF_INET;
+        server.sin_port = htons(PORT);
+        inet_pton(AF_INET, "127.0.0.1", &server.sin_addr);
+
+        if (connect(sock, (struct sockaddr *)&server,
+                    sizeof(server)) < 0) {
+            perror("Connection failed");
+            close(sock);
+            continue;
+        }
+
+        if (send(sock, request, strlen(request), 0) < 0) {
+            perror("Send failed");
+            close(sock);
+            continue;
+        }
+
+        shutdown(sock, SHUT_WR);
+
+        n = recv(sock, response, sizeof(response) - 1, 0);
+
+        if (n > 0) {
+            response[n] = '\0';
+            printf("\n%s\n", response);
+        } else {
+            printf("No response from server.\n");
+        }
+
+        close(sock);
+    }
+
+    return 0;
+}
