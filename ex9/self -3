@@ -1,0 +1,163 @@
+Arithmetic Calculator Using UDP
+
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
+#define PORT 5003
+
+int main() {
+    int sock;
+    char request[200], reply[200];
+    struct sockaddr_in server, client;
+    socklen_t len = sizeof(client);
+
+    sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        perror("Socket");
+        return 1;
+    }
+
+    memset(&server, 0, sizeof(server));
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(PORT);
+
+    if (bind(sock, (struct sockaddr *)&server,
+             sizeof(server)) < 0) {
+        perror("Bind");
+        close(sock);
+        return 1;
+    }
+
+    printf("Calculator server running on port %d\n", PORT);
+
+    while (1) {
+        int n = recvfrom(sock, request, sizeof(request) - 1,
+                         0, (struct sockaddr *)&client, &len);
+
+        if (n < 0)
+            continue;
+
+        request[n] = '\0';
+
+        char op;
+        double a, b, result;
+
+        if (sscanf(request, "%lf %c %lf", &a, &op, &b) != 3) {
+            strcpy(reply, "Invalid input format.");
+        } else {
+            switch (op) {
+                case '+':
+                    result = a + b;
+                    snprintf(reply, sizeof(reply),
+                             "Result: %.2f", result);
+                    break;
+
+                case '-':
+                    result = a - b;
+                    snprintf(reply, sizeof(reply),
+                             "Result: %.2f", result);
+                    break;
+
+                case '*':
+                    result = a * b;
+                    snprintf(reply, sizeof(reply),
+                             "Result: %.2f", result);
+                    break;
+
+                case '/':
+                    if (b == 0)
+                        strcpy(reply, "Error: Division by zero.");
+                    else {
+                        result = a / b;
+                        snprintf(reply, sizeof(reply),
+                                 "Result: %.2f", result);
+                    }
+                    break;
+
+                default:
+                    strcpy(reply, "Invalid operator.");
+            }
+        }
+
+        sendto(sock, reply, strlen(reply), 0,
+               (struct sockaddr *)&client, len);
+
+        printf("Request: %s\n", request);
+    }
+
+    close(sock);
+    return 0;
+}
+
+
+
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
+#define PORT 5003
+
+int main() {
+    int sock;
+    double a, b;
+    char op, request[200], reply[200];
+    struct sockaddr_in server;
+    socklen_t len = sizeof(server);
+
+    sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        perror("Socket");
+        return 1;
+    }
+
+    memset(&server, 0, sizeof(server));
+    server.sin_family = AF_INET;
+    server.sin_port = htons(PORT);
+    inet_pton(AF_INET, "127.0.0.1", &server.sin_addr);
+
+    while (1) {
+        printf("\nEnter first number (or 999 to exit): ");
+        if (scanf("%lf", &a) != 1)
+            break;
+
+        if (a == 999)
+            break;
+
+        printf("Enter operator (+, -, *, /): ");
+        scanf(" %c", &op);
+
+        printf("Enter second number: ");
+        scanf("%lf", &b);
+
+        snprintf(request, sizeof(request),
+                 "%.10g %c %.10g", a, op, b);
+
+        sendto(sock, request, strlen(request), 0,
+               (struct sockaddr *)&server, len);
+
+        struct timeval timeout = {3, 0};
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
+                   &timeout, sizeof(timeout));
+
+        int n = recvfrom(sock, reply, sizeof(reply) - 1,
+                         0, NULL, NULL);
+
+        if (n >= 0) {
+            reply[n] = '\0';
+            printf("%s\n", reply);
+        } else {
+            printf("Server did not respond.\n");
+        }
+    }
+
+    close(sock);
+    return 0;
+}
