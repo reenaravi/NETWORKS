@@ -1,0 +1,165 @@
+Student Information Lookup System Using UDP
+
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
+#define PORT 5004
+
+struct Student {
+    int regno;
+    char name[50];
+    char department[30];
+    int semester;
+    float cgpa;
+};
+
+struct Student students[] = {
+    {101, "Arun", "CSE", 4, 8.5},
+    {102, "Ravi", "ECE", 3, 7.8},
+    {103, "Priya", "IT", 5, 9.1},
+    {104, "Kumar", "EEE", 2, 8.0}
+};
+
+int main() {
+    int sock;
+    char request[100], reply[300];
+    struct sockaddr_in server, client;
+    socklen_t len = sizeof(client);
+    int total = sizeof(students) / sizeof(students[0]);
+
+    sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (sock < 0) {
+        perror("Socket");
+        return 1;
+    }
+
+    memset(&server, 0, sizeof(server));
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(PORT);
+
+    if (bind(sock, (struct sockaddr *)&server,
+             sizeof(server)) < 0) {
+        perror("Bind");
+        close(sock);
+        return 1;
+    }
+
+    printf("Student lookup server running on port %d\n", PORT);
+
+    while (1) {
+        int n = recvfrom(sock, request, sizeof(request) - 1,
+                         0, (struct sockaddr *)&client, &len);
+
+        if (n < 0)
+            continue;
+
+        request[n] = '\0';
+
+        int regno, found = 0;
+
+        if (sscanf(request, "%d", &regno) != 1) {
+            strcpy(reply, "Invalid registration number.");
+        } else {
+            for (int i = 0; i < total; i++) {
+                if (students[i].regno == regno) {
+                    snprintf(reply, sizeof(reply),
+                        "Student Found\n"
+                        "Registration Number: %d\n"
+                        "Name: %s\n"
+                        "Department: %s\n"
+                        "Semester: %d\n"
+                        "CGPA: %.2f",
+                        students[i].regno,
+                        students[i].name,
+                        students[i].department,
+                        students[i].semester,
+                        students[i].cgpa);
+
+                    found = 1;
+                    break;
+                }
+            }
+
+            if (!found)
+                strcpy(reply, "Error: Student record not found.");
+        }
+
+        sendto(sock, reply, strlen(reply), 0,
+               (struct sockaddr *)&client, len);
+
+        printf("Lookup request: %s\n", request);
+    }
+
+    close(sock);
+    return 0;
+}
+
+
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+
+#define PORT 5004
+
+int main() {
+    int sock, regno;
+    char request[100], reply[300];
+    struct sockaddr_in server;
+    socklen_t len = sizeof(server);
+
+    sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (sock < 0) {
+        perror("Socket");
+        return 1;
+    }
+
+    memset(&server, 0, sizeof(server));
+    server.sin_family = AF_INET;
+    server.sin_port = htons(PORT);
+    inet_pton(AF_INET, "127.0.0.1", &server.sin_addr);
+
+    struct timeval timeout = {3, 0};
+
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
+               &timeout, sizeof(timeout));
+
+    while (1) {
+        printf("\n--- Student Information Lookup ---\n");
+        printf("Enter registration number (0 to exit): ");
+
+        if (scanf("%d", &regno) != 1)
+            break;
+
+        if (regno == 0)
+            break;
+
+        snprintf(request, sizeof(request), "%d", regno);
+
+        sendto(sock, request, strlen(request), 0,
+               (struct sockaddr *)&server, len);
+
+        int n = recvfrom(sock, reply, sizeof(reply) - 1,
+                         0, NULL, NULL);
+
+        if (n >= 0) {
+            reply[n] = '\0';
+            printf("\n%s\n", reply);
+        } else {
+            printf("Server did not respond.\n");
+        }
+    }
+
+    close(sock);
+    return 0;
+}
