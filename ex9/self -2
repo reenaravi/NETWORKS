@@ -1,0 +1,124 @@
+Weather Monitoring System Using UDP
+
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
+#define PORT 5002
+
+int main() {
+    int sock;
+    char request[100], reply[300];
+    struct sockaddr_in server, client;
+    socklen_t len = sizeof(client);
+
+    sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        perror("Socket");
+        return 1;
+    }
+
+    memset(&server, 0, sizeof(server));
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(PORT);
+
+    if (bind(sock, (struct sockaddr *)&server,
+             sizeof(server)) < 0) {
+        perror("Bind");
+        close(sock);
+        return 1;
+    }
+
+    printf("Weather server running on port %d\n", PORT);
+
+    while (1) {
+        int n = recvfrom(sock, request, sizeof(request) - 1,
+                         0, (struct sockaddr *)&client, &len);
+
+        if (n < 0)
+            continue;
+
+        request[n] = '\0';
+
+        snprintf(reply, sizeof(reply),
+                 "Weather Report\n"
+                 "Temperature: 30 C\n"
+                 "Humidity: 65%%\n"
+                 "Pressure: 1013 hPa\n"
+                 "Wind Speed: 12 km/h\n"
+                 "ACK: Request received");
+
+        sendto(sock, reply, strlen(reply), 0,
+               (struct sockaddr *)&client, len);
+
+        printf("Weather request received: %s\n", request);
+    }
+
+    close(sock);
+    return 0;
+}
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
+#define PORT 5002
+
+int main() {
+    int sock;
+    char request[] = "GET_WEATHER";
+    char reply[512];
+    struct sockaddr_in server;
+    socklen_t len = sizeof(server);
+
+    sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        perror("Socket");
+        return 1;
+    }
+
+    memset(&server, 0, sizeof(server));
+    server.sin_family = AF_INET;
+    server.sin_port = htons(PORT);
+    inet_pton(AF_INET, "127.0.0.1", &server.sin_addr);
+
+    while (1) {
+        printf("\n1. Get weather report\n");
+        printf("2. Exit\nChoice: ");
+
+        int choice;
+        if (scanf("%d", &choice) != 1 || choice == 2)
+            break;
+
+        if (choice != 1) {
+            printf("Invalid choice.\n");
+            continue;
+        }
+
+        sendto(sock, request, strlen(request), 0,
+               (struct sockaddr *)&server, len);
+
+        struct timeval timeout = {3, 0};
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
+                   &timeout, sizeof(timeout));
+
+        int n = recvfrom(sock, reply, sizeof(reply) - 1,
+                         0, NULL, NULL);
+
+        if (n >= 0) {
+            reply[n] = '\0';
+            printf("\n%s\n", reply);
+        } else {
+            printf("No response from weather server.\n");
+        }
+    }
+
+    close(sock);
+    return 0;
+}
