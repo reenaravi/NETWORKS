@@ -1,0 +1,63 @@
+Selective Repeat Sliding Window Protocol
+
+
+#include <stdio.h>
+
+int main() {
+    int n, window, lost;
+    int transmissions = 0;
+    int retransmissions = 0;
+
+    printf("Enter number of frames: ");
+    scanf("%d", &n);
+
+    printf("Enter window size: ");
+    scanf("%d", &window);
+
+    if (n <= 0 || window <= 0) {
+        printf("Invalid input.\n");
+        return 1;
+    }
+
+    printf("Enter frame number to simulate loss (0 for none): ");
+    scanf("%d", &lost);
+
+    if (lost < 0 || lost > n) {
+        printf("Invalid frame number.\n");
+        return 1;
+    }
+
+    for (int start = 1; start <= n; start += window) {
+        int end = start + window - 1;
+
+        if (end > n)
+            end = n;
+
+        printf("\nSending frames %d to %d\n", start, end);
+
+        for (int i = start; i <= end; i++) {
+            printf("Frame %d sent.\n", i);
+            transmissions++;
+
+            if (i == lost)
+                printf("Frame %d lost. No ACK received.\n", i);
+            else
+                printf("Frame %d received. ACK %d received.\n", i, i);
+        }
+
+        if (lost >= start && lost <= end) {
+            printf("\nRetransmitting only frame %d\n", lost);
+            printf("Frame %d retransmitted successfully.\n", lost);
+
+            transmissions++;
+            retransmissions++;
+            lost = 0;
+        }
+    }
+
+    printf("\nTotal transmissions: %d\n", transmissions);
+    printf("Retransmissions: %d\n", retransmissions);
+    printf("Successfully delivered frames: %d\n", n);
+
+    return 0;
+}
