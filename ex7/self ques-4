@@ -1,0 +1,278 @@
+Chat Notification System Using TCP
+
+SERVER.C
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
+#define PORT 5004
+#define MAX_CLIENTS 20
+
+int clients[MAX_CLIENTS];
+int count = 0;
+
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+
+void broadcast(const char *message, int sender) {
+    pthread_mutex_lock(&lock);
+
+    for (int i = 0; i < count; i++) {
+        if (clients[i] != sender) {
+            if (send(clients[i], message,
+                     strlen(message), MSG_NOSIGNAL) < 0) {
+                /* Client may have disconnected. */
+            }
+        }
+    }
+
+    pthread_mutex_unlock(&lock);
+}
+
+void remove_client(int client) {
+    pthread_mutex_lock(&lock);
+
+    for (int i = 0; i < count; i++) {
+        if (clients[i] == client) {
+            for (int j = i; j < count - 1; j++)
+                clients[j] = clients[j + 1];
+
+            count--;
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&lock);
+}
+
+void *handle_client(void *arg) {
+    int client = *(int *)arg;
+    free(arg);
+
+    char name[50] = "Client";
+    char message[1024], notification[1200];
+
+    int n = recv(client, name, sizeof(name) - 1, 0);
+
+    if (n <= 0) {
+        remove_client(client);
+        close(client);
+        return NULL;
+    }
+
+    name[n] = '\0';
+    name[strcspn(name, "\r\n")] = '\0';
+
+    snprintf(notification, sizeof(notification),
+             "%s joined the chat.\n", name);
+    printf("%s", notification);
+    broadcast(notification, client);
+
+    while (1) {
+        memset(message, 0, sizeof(message));
+
+        n = recv(client, message, sizeof(message) - 1, 0);
+
+        if (n <= 0)
+            break;
+
+        message[n] = '\0';
+        message[strcspn(message, "\r\n")] = '\0';
+
+        if (strcmp(message, "/quit") == 0)
+            break;
+
+        snprintf(notification, sizeof(notification),
+                 "%s: %s\n", name, message);
+
+        printf("%s", notification);
+        broadcast(notification, client);
+    }
+
+    snprintf(notification, sizeof(notification),
+             "%s left the chat.\n", name);
+
+    remove_client(client);
+    broadcast(notification, -1);
+
+    printf("%s", notification);
+    close(client);
+
+    return NULL;
+}
+
+int main() {
+    int server_fd;
+    struct sockaddr_in server, client_addr;
+
+    server_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (server_fd < 0) {
+        perror("Socket failed");
+        return 1;
+    }
+
+    int opt = 1;
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR,
+               &opt, sizeof(opt));
+
+    memset(&server, 0, sizeof(server));
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons(PORT);
+
+    if (bind(server_fd, (struct sockaddr *)&server,
+             sizeof(server)) < 0 ||
+        listen(server_fd, 10) < 0) {
+        perror("Server setup failed");
+        close(server_fd);
+        return 1;
+    }
+
+    printf("Chat server running on port %d\n", PORT);
+
+    while (1) {
+        socklen_t len = sizeof(client_addr);
+
+        int client = accept(server_fd,
+            (struct sockaddr *)&client_addr, &len);
+
+        if (client < 0)
+            continue;
+
+        pthread_mutex_lock(&lock);
+
+        if (count >= MAX_CLIENTS) {
+            pthread_mutex_unlock(&lock);
+            send(client, "Server is full.\n", 16, 0);
+            close(client);
+            continue;
+        }
+
+        clients[count++] = client;
+        pthread_mutex_unlock(&lock);
+
+        int *p = malloc(sizeof(int));
+
+        if (!p) {
+            remove_client(client);
+            close(client);
+            continue;
+        }
+
+        *p = client;
+        pthread_t tid;
+
+        if (pthread_create(&tid, NULL,
+                           handle_client, p) != 0) {
+            remove_client(client);
+            close(client);
+            free(p);
+            continue;
+        }
+
+        pthread_detach(tid);
+    }
+
+    close(server_fd);
+    return 0;
+}
+
+CLIENT .C
+
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
+#define PORT 5004
+
+int sock;
+
+void *receive_messages(void *arg) {
+    char buffer[1200];
+    ssize_t n;
+
+    while ((n = recv(sock, buffer, sizeof(buffer) - 1, 0)) > 0) {
+        buffer[n] = '\0';
+        printf("\n%s", buffer);
+        fflush(stdout);
+    }
+
+    printf("\nDisconnected from server.\n");
+    return NULL;
+}
+
+int main() {
+    struct sockaddr_in server;
+    pthread_t receiver;
+    char name[50], message[1024];
+
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (sock < 0) {
+        perror("Socket failed");
+        return 1;
+    }
+
+    memset(&server, 0, sizeof(server));
+    server.sin_family = AF_INET;
+    server.sin_port = htons(PORT);
+    inet_pton(AF_INET, "127.0.0.1", &server.sin_addr);
+
+    if (connect(sock, (struct sockaddr *)&server,
+                sizeof(server)) < 0) {
+        perror("Connection failed");
+        close(sock);
+        return 1;
+    }
+
+    printf("Enter your name: ");
+    if (fgets(name, sizeof(name), stdin) == NULL) {
+        close(sock);
+        return 1;
+    }
+
+    name[strcspn(name, "\r\n")] = '\0';
+
+    if (send(sock, name, strlen(name), 0) < 0) {
+        perror("Send failed");
+        close(sock);
+        return 1;
+    }
+
+    if (pthread_create(&receiver, NULL,
+                       receive_messages, NULL) != 0) {
+        perror("Thread creation failed");
+        close(sock);
+        return 1;
+    }
+
+    printf("Connected to chat.\n");
+    printf("Type /quit to leave the chat.\n");
+
+    while (fgets(message, sizeof(message), stdin) != NULL) {
+        message[strcspn(message, "\r\n")] = '\0';
+
+        if (send(sock, message, strlen(message), 0) < 0) {
+            perror("Send failed");
+            break;
+        }
+
+        if (strcmp(message, "/quit") == 0)
+            break;
+    }
+
+    shutdown(sock, SHUT_RDWR);
+    close(sock);
+    pthread_join(receiver, NULL);
+
+    return 0;
+}
