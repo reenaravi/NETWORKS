@@ -1,0 +1,167 @@
+
+#include <stdlib.h>
+
+#define OFFSET 10000
+#define RANGE 20001
+
+static int delayed[RANGE];
+static int lowSize, highSize;
+static int lowHeap[100005], highHeap[100005];
+static int lowCount, highCount;
+
+void push(int heap[], int *size, int value, int isMin) {
+    int i = (*size)++;
+
+    while (i > 0) {
+        int parent = (i - 1) / 2;
+
+        if (isMin ? heap[parent] <= value
+                  : heap[parent] >= value)
+            break;
+
+        heap[i] = heap[parent];
+        i = parent;
+    }
+
+    heap[i] = value;
+}
+
+int pop(int heap[], int *size, int isMin) {
+    int top = heap[0];
+    int value = heap[--(*size)];
+    int i = 0;
+
+    while (2 * i + 1 < *size) {
+        int child = 2 * i + 1;
+
+        if (child + 1 < *size &&
+            (isMin ? heap[child + 1] < heap[child]
+                   : heap[child + 1] > heap[child]))
+            child++;
+
+        if (isMin ? value <= heap[child]
+                  : value >= heap[child])
+            break;
+
+        heap[i] = heap[child];
+        i = child;
+    }
+
+    if (*size > 0)
+        heap[i] = value;
+
+    return top;
+}
+
+void prune(int heap[], int *size, int isMin) {
+    while (*size > 0) {
+        int index = heap[0] + OFFSET;
+
+        if (index < 0 || index >= RANGE ||
+            delayed[index] == 0)
+            break;
+
+        delayed[index]--;
+        pop(heap, size, isMin);
+    }
+}
+
+void rebalance(void) {
+    prune(lowHeap, &lowCount, 0);
+    prune(highHeap, &highCount, 1);
+
+    while (lowSize > highSize + 1) {
+        int value = pop(lowHeap, &lowCount, 0);
+        lowSize--;
+        push(highHeap, &highCount, value, 1);
+        highSize++;
+        prune(lowHeap, &lowCount, 0);
+    }
+
+    while (lowSize < highSize) {
+        int value = pop(highHeap, &highCount, 1);
+        highSize--;
+        push(lowHeap, &lowCount, value, 0);
+        lowSize++;
+        prune(highHeap, &highCount, 1);
+    }
+}
+
+void addNum(int value) {
+    prune(lowHeap, &lowCount, 0);
+
+    if (lowSize == 0 || value <= lowHeap[0]) {
+        push(lowHeap, &lowCount, value, 0);
+        lowSize++;
+    } else {
+        push(highHeap, &highCount, value, 1);
+        highSize++;
+    }
+
+    rebalance();
+}
+
+void removeNum(int value) {
+    delayed[value + OFFSET]++;
+
+    prune(lowHeap, &lowCount, 0);
+    prune(highHeap, &highCount, 1);
+
+    if (lowSize > 0 && value <= lowHeap[0]) {
+        lowSize--;
+
+        if (value == lowHeap[0])
+            prune(lowHeap, &lowCount, 0);
+    } else {
+        highSize--;
+
+        if (highCount > 0 && value == highHeap[0])
+            prune(highHeap, &highCount, 1);
+    }
+
+    rebalance();
+}
+
+double median(void) {
+    prune(lowHeap, &lowCount, 0);
+    prune(highHeap, &highCount, 1);
+
+    if (lowSize > highSize)
+        return (double)lowHeap[0];
+
+    return ((double)lowHeap[0] + highHeap[0]) / 2.0;
+}
+
+double* medianSlidingWindow(int* nums, int numsSize,
+                            int k, int* returnSize) {
+    *returnSize = 0;
+
+    if (k <= 0 || k > numsSize)
+        return NULL;
+
+    for (int i = 0; i < RANGE; i++)
+        delayed[i] = 0;
+
+    lowSize = highSize = 0;
+    lowCount = highCount = 0;
+
+    double *result = malloc(
+        (numsSize - k + 1) * sizeof(double));
+
+    if (!result)
+        return NULL;
+
+    for (int i = 0; i < k; i++)
+        addNum(nums[i]);
+
+    result[(*returnSize)++] = median();
+
+    for (int i = k; i < numsSize; i++) {
+        addNum(nums[i]);
+        removeNum(nums[i - k]);
+
+        result[(*returnSize)++] = median();
+    }
+
+    return result;
+}
